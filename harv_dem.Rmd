@@ -1,0 +1,35 @@
+---
+title: "Processing DTMs for Harvard Forest"
+author: "Nate Looker"
+date: "June 23, 2016"
+output: html_document
+---
+
+## Process Harvard forest extent kml
+```{r kml-to-shp, engine='sh', eval=F}
+ogr2ogr -f 'ESRI Shapefile' /home/look/Documents/data/NEONDI-2016/NEONdata/D01/harv_boundary.shp /media/look/AOP-NEON1-4/D01/HARV/2014/HARV_L1/HARV_Lidar/BoundaryKMLs/2014_HARV_2_v02_full_boundary.kml 
+```
+
+## Load libraries
+
+```{r load-lib}
+library(raster)
+library(rgdal)
+library(maptools)
+
+```
+
+
+## Read in boundary shapefile
+
+```{r reproj-shp}
+dir_HARV_loc <- "../NEONdata/D01/" # local data directory
+dir_HARV_sd <- "/media/look/AOP-NEON1-4/D01/HARV/2014/" # data directory on NEON hard drive
+harv_bound <- shapefile(paste(dir_HARV_loc, "harv_boundary.shp", sep=""))
+
+newproj <- projection(raster("/media/look/AOP-NEON1-4/D01/HARV/2014/HARV_L3/HARV_Lidar/DTM/2014_HARV_2_720000_4712000_DTM.tif"))
+
+harv_UTM <- spTransform(harv_bound, CRS(newproj))
+
+```
+
