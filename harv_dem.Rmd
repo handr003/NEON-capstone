@@ -20,7 +20,7 @@ library(maptools)
 ```
 
 
-## Read in boundary shapefile
+## Read in site boundary shapefile
 
 ```{r reproj-shp}
 dir_HARV_loc <- "../NEONdata/D01/" # local data directory
@@ -31,5 +31,85 @@ newproj <- projection(raster("/media/look/AOP-NEON1-4/D01/HARV/2014/HARV_L3/HARV
 
 harv_UTM <- spTransform(harv_bound, CRS(newproj))
 
+plot(harv_UTM)
 ```
+
+## Read in national hydrography dataset shapefiles
+
+```{r read-in-NHD}
+
+harv_nhd <- shapefile(paste(dir_HARV_loc, "NHD/Shape/WBDHU8.shp", sep=""))
+plot(harv_nhd)
+plot(harv_bound, add=T)
+harv_nhd_utm <- spTransform(harv_nhd, CRS(newproj))
+
+```
+
+```{r read-dem-tif}
+
+harv_dtm <- raster(paste(dir_HARV_loc, "HARV-provisional/2014/lidar/HARV_lidarDTM.tif", sep=""))
+
+
+```
+
+```{r pheno-site-extent, eval=F}
+
+pheno_bound <- data.frame(ID=1:2, t(matrix(c(42.541779, -72.173509, 42.543716, -72.170825), ncol=2)))
+names(pheno_bound) <- c("ID","Y", "X")
+pheno_bound <- pheno_bound[,c(1,3,2)]
+coordinates(pheno_bound) <- c("X", "Y")
+projection(pheno_bound) <- projection(harv_nhd)
+pheno_bound_utm <- spTransform(pheno_bound, CRS(newproj))
+plot(pheno_bound_utm)
+# extent(pheno_bound_utm)
+
+```
+
+
+## Clip DTM by phenology plot extent
+
+```{r clip-dtm}
+
+harv_dtm_sub <- crop(harv_dtm, extent(pheno_bound_utm))
+plot(harv_dtm_sub)
+
+#writeRaster(harv_dtm_sub, "../outputs/HARV/harv_dtm_pheno.sdat")
+
+```
+
+## Call SAGA through bash
+
+```{r call-saga-cmd, engine='sh', eval=F}
+
+saga_cmd ta_morphometry 0 -ELEVATION ~/Documents/data/NEONDI-2016/outputs/HARV/harv_dtm_pheno.sgrd -SLOPE ~/Documents/data/NEONDI-2016/outputs/HARV/harv_slp -ASPECT ~/Documents/data/NEONDI-2016/outputs/HARV/harv_asp
+
+
+
+```
+
+
+
+## Bring in dtm from SJER
+
+```{r read-sjer-dtm}
+
+dir_SJER_loc <- "/home/look/Documents/data/NEONDI-2016/NEONdata/D17-California/SJER/"
+
+sjer_dtm <- raster(paste(dir_SJER_loc, "2013/lidar/SJER_lidarDTM.tif", sep=""))
+plot(sjer_dtm)
+
+```
+
+```{r aggregate-dtms}
+
+harv_sub_mean <- aggregate(harv_dtm_sub, fact=5, fun=mean)
+plot(harv_sub_mean)
+
+
+```
+
+
+
+
+
 
