@@ -68,12 +68,20 @@ plot(pheno_bound_utm)
 
 ## Clip DTM by phenology plot extent
 
-```{r clip-dtm}
+```{r clip-dtm, eval=F}
 
 harv_dtm_sub <- crop(harv_dtm, extent(pheno_bound_utm))
 plot(harv_dtm_sub)
-
+writeRaster(harv_dtm_sub, "../outputs/HARV/harv_dtm_sub.tif", overwrite=T)
 #writeRaster(harv_dtm_sub, "../outputs/HARV/harv_dtm_pheno.sdat")
+
+```
+
+## Read in saved version of cropped dtm so that knitr doesn't break
+
+```{r write-dtm-crop}
+
+harv_dtm_sub <- raster("../outputs/HARV/harv_dtm_sub.tif")
 
 ```
 
@@ -101,10 +109,23 @@ plot(sjer_dtm)
 ```
 
 ```{r aggregate-dtms}
+## Create hillshade raster directly from DEM
+hillshade_direct <- function(dem) {
+  slp <- terrain(dem, opt="slope", unit="radians", neighbors=8)
+  asp <- terrain(dem, opt="aspect", unit="radians", neighbors=8)
+  shade <- hillShade(slope=slp, aspect=asp, angle=45, direction=315)
+  return(shade)
+}
 
-harv_sub_mean <- aggregate(harv_dtm_sub, fact=5, fun=mean)
-plot(harv_sub_mean)
+## Compare hillshades from aggregated and non-aggregated DEMs
+harv_sub_mean <- aggregate(harv_dtm_sub, fact=3, fun=mean)
 
+harv_sub_mean_shade <- hillshade_direct(harv_sub_mean)
+harv_sub_1m_shade <- hillshade_direct(harv_dtm_sub)
+
+par(mfrow=c(1,2))
+plot(harv_sub_1m_shade)
+plot(harv_sub_mean_shade)
 
 ```
 
