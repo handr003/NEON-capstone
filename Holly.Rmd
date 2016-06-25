@@ -5,3 +5,80 @@ date: "June 23, 2016"
 output: html_document
 ---
 
+#Correlating NDVI to temperature in Harvard Forest using NEON and Landsat data
+First, I will import Harvard NDVI data and tower IR temperature data from NEON.  I will import thermal IR rasters from Landsat for Harvard Forest.
+
+##Load libraries and data
+```{r load-libraries}
+library(raster)
+library(ggplot2)
+```
+
+```{r import-data}
+lidar <- raster("../NEONdata/NEONdata/D01-Massachusetts/HARV/2014/lidar/HARV_lidarCHM.tif")
+tower <- read.csv("../NEONdata/HARV_temp/HARV_temp_30min.csv")
+thermal <- raster("../NEONdata/NEONdata/D01-Massachusetts/HARV/2014/HARV_thermal.TIF")
+lidar[lidar==0] <- NA
+x11()
+hist(lidar)
+x11()
+hist(thermal)
+
+plot(thermal)
+```
+
+##Check extents
+
+```{r check-extents}
+extent(thermal)
+extent(lidar)
+```
+
+##Clip to smaller extent
+
+```{r clip-extents}
+same_extent <- function(raster1,raster2) {
+  if (extent(raster1)==extent(raster2)) {
+    print("Rasters have same extent")
+  } else {
+    overlap <- raster::intersect(extent(raster1),extent(raster2))
+    raster1 <- crop(raster1,overlap)
+    raster2 <- crop(raster2,overlap)
+    print("Extents are different, cropping data")
+  } 
+  raster.stack <- stack(raster1,raster2)
+  return(raster.stack)
+}
+
+
+if(extent(lidar)==extent(thermal)) {
+  
+} else{
+    print("Extents are different, cropping data")
+    overlap <- intersect(extent(thermal),extent(lidar))
+    #now let's crop the lidar data to HSI
+    thermal <- crop(thermal,overlap)
+    lidar <- crop(lidar,overlap)
+  }
+
+
+thermal <- setExtent(thermal, lidar_aggregated, keepres=FALSE, snap=FALSE)
+lidar_aggregated <- setExtent(lidar_aggregated,thermal,keepres=FALSE, snap=FALSE)#check that these should both be FALSE
+stack <- brick(lidar_aggregated,thermal)
+#check extents again
+extent(thermal)
+extent(lidar)
+extent(lidar_aggregated)
+
+#aggregate rasters
+lidar_aggregated <- aggregate(lidar,29.59375)
+```
+
+##Plot CHM-thermal regression
+
+```{r plot-regression}
+plot(lidar_aggregated,thermal)
+
+lm()
+```
+
