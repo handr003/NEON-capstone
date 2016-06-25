@@ -252,7 +252,10 @@ ggsave("../outputs/figs/fig2_ntl.png", plot_out_2)
 
 ggplot(sjer_summary, aes(TWI, NDVI)) + geom_point(aes(size=seNDVI)) + geom_smooth(se=F, colour=1)  + labs(x="Topographic Wetness Index (binned by deciles)", y = "Normalized Difference Vegetation Index")
 
-ggplot(sjer_summary, aes(TWI, PRI)) + geom_point(aes(size=seNDVI)) + geom_smooth(se=F, colour=1)  + labs(x="Topographic Wetness Index (binned by deciles)", y = "Photochemical Reflectance Index")
+plot_out_3 <- ggplot(sjer_summary, aes(TWI, PRI)) + geom_point(aes(size=seNDVI)) + geom_smooth(se=F, colour=1)  + labs(x="Topographic Wetness Index (binned by deciles)", y = "Photochemical Reflectance Index")
+
+ggsave("../outputs/figs/fig3_ntl.png", plot_out_3)
+
 
 ```
 
