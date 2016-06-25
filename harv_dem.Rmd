@@ -16,7 +16,10 @@ ogr2ogr -f 'ESRI Shapefile' /home/look/Documents/data/NEONDI-2016/NEONdata/D01/h
 library(raster)
 library(rgdal)
 library(maptools)
-
+library(cowplot)
+library(data.table)
+library(dplyr)
+set.seed(0)
 ```
 
 
@@ -37,11 +40,21 @@ plot(harv_UTM)
 ## Read in national hydrography dataset shapefiles
 
 ```{r read-in-NHD}
-
-harv_nhd <- shapefile(paste(dir_HARV_loc, "NHD/Shape/WBDHU8.shp", sep=""))
+# Read in HUC12
+harv_nhd <- shapefile(paste(dir_HARV_loc, "NHD/Shape/WBDHU12.shp", sep=""))
 plot(harv_nhd)
-plot(harv_bound, add=T)
 harv_nhd_utm <- spTransform(harv_nhd, CRS(newproj))
+
+harv_nhd_clip <- crop(harv_nhd_utm, extent(harv_UTM))
+plot(harv_nhd_clip)
+
+# Read in waterbodies
+harv_wb <- shapefile(paste(dir_HARV_loc, "NHD/Shape/NHDWaterbody.shp", sep=""))
+
+harv_wb_utm <- spTransform(harv_wb, CRS(newproj))
+harv_wb_clip <- crop(harv_wb_utm, extent(harv_UTM))
+plot(harv_wb_clip)
+shapefile(harv_wb_clip, filename="../outputs/HARV/harv_wb_clip.shp", overwrite=T)
 
 ```
 
@@ -108,6 +121,8 @@ plot(sjer_dtm)
 
 ```
 
+
+## Assess effects of aggregating 1-m DTMs
 ```{r aggregate-dtms}
 ## Create hillshade raster directly from DEM
 hillshade_direct <- function(dem) {
@@ -129,7 +144,117 @@ plot(harv_sub_mean_shade)
 
 ```
 
+## Reclassify rasters
 
+```{r rast-reclass}
+
+  ## Function to reclassify a raster using a vector of quantiles (default is quartiles)
+  bin_rast <- function(raster_in, probs=seq(0,1,length=5)) {
+  raster_in[raster_in==0] <- NA
+  breaks <- unname(quantile(raster_in, probs))
+  raster_in <- cut(raster_in, breaks=breaks)
+  return(raster_in)
+}
+
+```
+
+
+## Read in SAGA topographic wetness tifs
+
+```{r saga-twi}
+sjer_twi <- raster("../SAGA_NEON/saga_twi_sjer.tif")
+harv_twi <- raster("../SAGA_NEON/saga_twi_harv.tif")
+
+sjer_twi_df <- values(sjer_twi)
+sjer_twi_df <- sjer_twi_df[complete.cases(sjer_twi_df)]
+harv_twi_df <- values(harv_twi)
+harv_twi_df <- harv_twi_df[complete.cases(harv_twi_df)]
+
+twi_df <- rbindlist(list(data.frame(Site="SJER",sjer_twi_df), data.frame(Site="HARV", harv_twi_df)))
+names(twi_df)[2] <- "TWI"
+rm(sjer_twi_df);rm(harv_twi_df)
+
+density(sjer_twi, main="Topographic Wetness Index\n SJER")
+density(harv_twi, main="Topographic Wetness Index\n HARV")
+```
+
+## Read in veg rasters
+
+```{r chm-and-ndvi}
+
+sjer_chm <- raster("../NEONdata/D17-California/SJER/2013/lidar/SJER_lidarCHM.tif")
+sjer_evi <- raster("../NEONdata/D17-California/SJER/2013/spectrometer/veg_index/SJER_EVI.tif")
+sjer_ndvi <- raster("../NEONdata/D17-California/SJER/2013/spectrometer/veg_index/SJER_NDVI.tif")
+sjer_pri <- raster("../NEONdata/D17-California/SJER/2013/spectrometer/veg_index/SJER_PRI.tif")
+
+harv_chm <- raster("../NEONdata/D01/HARV-provisional/2014/lidar/HARV_lidarCHM.tif")
+
+```
+
+## Create "Huber index" (a proposed proxy for Huber value)
+
+```{r huber}
+
+sjer_huber <- sjer_evi / sjer_chm
+cellStats(sjer_huber, median)
+sjer_huber[sjer_huber > 0.2 | sjer_huber < 0] <- NA
+plot(sjer_huber)
+writeRaster(sjer_huber, "../outputs/SJER/sjer_huber.tif")
+
+```
+
+## Reclassify TWI
+
+```{r twi-recl}
+
+sjer_twi_recl <- bin_rast(raster_in = sjer_twi, probs=seq(0,1,length=10))
+sjer_twi_recl <- crop(sjer_twi_recl, extent(sjer_huber))
+plot(sjer_twi_recl)
+# writeRaster(sjer_twi_recl, "../outputs/SJER/sjer_twi_recl.tif", overwrite=T)
+
+harv_twi_recl <- bin_rast(raster_in = harv_twi, probs=seq(0,1,length=10))
+harv_twi_recl <- crop(harv_twi_recl, extent(harv_chm))
+
+```
+
+
+## Associate veg data with TWI classes
+
+```{r ext-hub-twi}
+sjer_brick <- brick(sjer_evi, sjer_chm, sjer_twi_recl, sjer_ndvi, sjer_pri)
+sjer_brick_df <- as.data.frame(sjer_brick)
+sjer_brick_df <- sjer_brick_df[complete.cases(sjer_brick_df),]
+sjer_brick_df <- sjer_brick_df[sample(1:nrow(sjer_brick_df), 10000), ]
+
+harv_brick <- brick(harv_chm, harv_twi_recl)
+harv_brick_df <- as.data.frame(harv_brick)
+harv_brick_df <- harv_brick_df[complete.cases(harv_brick_df),]
+harv_brick_df <- harv_brick_df[sample(1:nrow(harv_brick_df), 10000), ]
+
+```
+
+## Summarize veg data by TWI class
+
+```{r aggregate-veg}
+s.e. <- function(vec) {
+  sd(vec)/length(vec)
+}
+sjer_summary <- sjer_brick_df %>% mutate(TWI=layer) %>% group_by(TWI) %>% summarise(EVI = mean(SJER_EVI), CHM = mean(SJER_lidarCHM), seEVI = s.e.(SJER_EVI), seCHM = s.e.(SJER_lidarCHM), NDVI = mean(SJER_NDVI), seNDVI = s.e.(SJER_NDVI), PRI = mean(SJER_PRI), sePRI = s.e.(SJER_PRI))
+harv_summary <- harv_brick_df %>% mutate(TWI=layer) %>% group_by(TWI) %>% summarise(CHM = mean(HARV_lidarCHM), seCHM = s.e.(HARV_lidarCHM))
+twosite_summary <- rbind(data.frame(Site="SJER", sjer_summary[,c(1,3,5)]), data.frame(Site="HARV", harv_summary))
+plot_out <- ggplot(twosite_summary, aes(TWI, CHM, group=Site)) + geom_point(aes(size=seCHM)) + geom_smooth(se=F, colour=1) + facet_wrap(~Site, scales="free_y") + labs(x="Topographic Wetness Index (binned by deciles)", y = "Canopy Height Model (m)")
+
+ggsave("../outputs/figs/fig_ntl.png", plot_out)
+
+plot_out_2 <- ggplot(sjer_summary, aes(TWI, EVI)) + geom_point(aes(size=seEVI)) + geom_smooth(se=F, colour=1)  + labs(x="Topographic Wetness Index (binned by deciles)", y = "Enhanced Vegetation Index")
+
+ggsave("../outputs/figs/fig2_ntl.png", plot_out_2)
+
+ggplot(sjer_summary, aes(TWI, NDVI)) + geom_point(aes(size=seNDVI)) + geom_smooth(se=F, colour=1)  + labs(x="Topographic Wetness Index (binned by deciles)", y = "Normalized Difference Vegetation Index")
+
+ggplot(sjer_summary, aes(TWI, PRI)) + geom_point(aes(size=seNDVI)) + geom_smooth(se=F, colour=1)  + labs(x="Topographic Wetness Index (binned by deciles)", y = "Photochemical Reflectance Index")
+
+```
 
 
 
